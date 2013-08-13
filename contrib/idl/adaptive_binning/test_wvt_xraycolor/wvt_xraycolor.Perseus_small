@@ -1,0 +1,27 @@
+; Read in the signal and noise images
+soft=mrdfits('soft.fits',0) ; 0.3-1.2 keV, in photons/sec/cm^2/pixel
+hard=mrdfits('hard.fits',0) ; 1.2-5.0 keV, in photons/sec/cm^2/pixel
+softnoise=mrdfits('softnoise.fits',0)
+hardnoise=mrdfits('hardnoise.fits',0)
+mask=mrdfits('mask.fits',0)
+ctsimage=mrdfits('cts.fits')
+; Adaptively bin to get a color map with S/N of 15
+targetSN=15d0
+wvt_xraycolor, soft, hard, softnoise, hardnoise, targetSN, binnedimage, $
+    xnode, ynode, snbin=snbin, mask=mask, ctsimage=ctsimage, $
+    binnumber=binnumber, binvalue=binvalue, save_all=save_all
+
+
+; Save the results
+file_delete, 'abinned.fits abinned_snr.fits abinned_data.fits abinned_binnum.fits',/quiet
+mwrfits, binnedimage, 'abinned.fits'
+snbin=[0.,snbin]
+mwrfits, snbin[binnumber], 'abinned_snr.fits'
+mwrfits, save_all, 'abinned_data.fits'
+mwrfits, mask*(binnumber), 'abinned_binnum.fits'
+
+END
+
+
+
+

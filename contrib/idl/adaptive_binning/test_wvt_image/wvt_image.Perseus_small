@@ -1,0 +1,58 @@
+; Read in the test case data
+;---------------------------
+ctsimage=mrdfits('cts_256.fits',0, header) ; Raw Counts
+image=mrdfits('img_256.fits',0)            ; Fluxed image
+noise=sqrt(mrdfits('var_256.fits',0))      ; Associated noise in fluxed image
+mask=mrdfits('mask_256.fits',0)            ; The mask, "1" for good, "0" bad
+origdim=size(image,/dimension)             ; get the dimensions
+center=[127.,127.]                         ; defines a center
+file_delete, 'stopmenow',/quiet            ; Make sure you don't stop 
+                                           ; immediately
+
+targetSN=10d0                              ; Choose the S/N value
+max_area=100^2                             ; Maximum size per bin (no effect
+                                           ; in this example) 
+
+
+; Run the adaptive binning algorithm
+;-----------------------------------
+wvt_image,image,noise,targetSN,binnedimage,xnode,ynode,snbin=snbin,$
+    mask=mask, ctsimage=ctsimage, binnumber=binnumber, binvalue=binvalue, $
+    center=center, save_all=save_all, max_area=max_area
+
+
+; Compare the adaptively binned image with the unbinned image
+;------------------------------------------------------------
+device, decompose=0
+loadct, 3
+window, xsize=2*origdim[0], ysize=origdim[1]
+tv, bytscl(alog([binnedimage,image]>1d-100), min=alog(3d-8), max=alog(1d-7))
+
+
+; Save the output of WVT_IMAGE in fits files
+;-------------------------------------------
+file_delete, ['abinned.fits', 'abinned_snr.fits', 'abinned_data.fits', 'abinned_binnum.fits'], /quiet
+mwrfits, binnedimage, 'abinned.fits', header
+mwrfits, mask*(snbin[binnumber]), 'abinned_snr.fits', header
+mwrfits, save_all, 'abinned_data.fits'
+mwrfits, mask*(binnumber), 'abinned_binnum.fits', header
+ 
+
+; Interpolated image
+;-------------------
+; If you only want to produce a pretty picture, you might want to interpolate 
+; the binned image with one of IDL's interpolation routines in GRIDDATA
+; DO NOT USE THE INTERPOLATED IMAGE FOR ANY INTERPRETATION OR IN A QUALITATIVE
+; ANALYSIS. Interpolation does not conserve the flux and will produce 
+; spurious features in the output. 
+triangulate,xnode,ynode,trbin, b
+gridnat = GRIDDATA(save_all.xnode, save_all.ynode, alog10(save_all.binvalue),dimension=origdim, start=[0,0],/natural_neighbor, triangle=trbin, delta=1., missing=-10)
+; Compute the cutoff at the boundary
+bingrid=trigrid(save_all.xnode,save_all.ynode,save_all.binvalue^0,trbin, [0,0], [0,0,origdim[0],origdim[1]], nx=origdim[0], ny=origdim[1], missing=0)
+tv, bytscl(alog([binnedimage,10^gridnat* (bingrid GT 0)]>1d-100), min=alog(3d-8), max=alog(1d-7))
+file_delete, 'abinned_interpol.fits', /quiet
+mwrfits, (10^gridnat)* (bingrid GT 0), 'abinned_interpol.fits', header
+
+END
+  
+
