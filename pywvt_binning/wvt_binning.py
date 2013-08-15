@@ -3,11 +3,10 @@ Created on Aug 2, 2013
 
 @author: william
 '''
+from __future__ import division
+
 from pywvt_binning.add_sn import add_noise, add_signal
 
-''' Comments of the IDL original version
-...
-'''
 
 import numpy as np
 
@@ -31,16 +30,19 @@ def wvt_binning(x, y, pixelSize, targetSN, signal, noise, cts=None, center=None,
    
     print 'Bin-accretion...'
     
-    binnumber = wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts, max_area, keepfixed, center)
+    binnumber, SNBin = wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts, max_area, keepfixed, center)
     
-    np.savetxt('bin_accretion.out', binnumber, fmt='%i')
+    print 'Reassign bad bins...'
+    xNode, yNode, binnumber = wvt_reassign_bad_bins(x, y, dens, targetSN, binnumber, SNBin)
     
-#     return binnumber, xNode, yNode, SNbin, area, binValue
+    np.savetxt('reassign.out', binnumber, fmt='%i') 
+
+
     return True, True, True, True, True, True
       
 
 def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, max_area=None,
-                      keepfixed=None, center=None): #binnumber
+                      keepfixed=None, center=None):
     
     
     x = np.array(x, dtype=np.float) #FIXME:
@@ -50,9 +52,7 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
         raise NotImplemented("KeepFixed is not implemented yet!")
     
     print '...making neighbor list...'
-    neighborlist = wvt_makeneighborlist(x, y, pixelSize)
-#     print neighborlist[0], neighborlist[1000], neighborlist[-1]
-    
+    neighborlist = wvt_makeneighborlist(x, y, pixelSize)    
     
     nx = len(x)
     binnumber = np.ones(shape=nx, dtype=np.int) * -1 #; will contain the bin number of each given pixel
@@ -85,9 +85,12 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
     
 #   ; The first bin will be assigned BINNUMBER = 1
 #   ; With N pixels there will be at most N bins
-#     totpix = np.int(nx)
-    SNold = add_signal(signal)/add_noise(noise)
-    goodold=0
+
+#   Here we are changing from first bin equals one to equals 0 
+    
+    unBinned = []
+    
+    goodold = 0
     areaold = np.float(nx)
     area = 1.0
     mass = 1.e-200
@@ -110,11 +113,11 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
     for i in range(nx):
         totgoodbins += goodold
         
-#         if goodold:
-        print('bin:  ', totgoodbins, ' | S/N:', SNold,' | n_pixels: ', areaold) #,
-#                   ' | ',  100*(1-len(unBinned))/totpix, ' % done')
+        if goodold:
+            print('bin: %i | n_pixels:  %i | %3.2f percent done' % 
+                  ( totgoodbins, areaold,  100*(1-len(unBinned)/nx) ) )
     
-        SNold = 0
+
         areaold = 0
     
         binnumber[currentBin] = i #; Here currentBin is still made of one pixel
@@ -157,9 +160,6 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
 #       ; For speed, remember the neighbors from the last accretion step and 
 #       ; simply add the new ones.
             neighbors, exneighbors = wvt_findneighbors(currentBin,neighborlist, exneighbors, newmember, neighbors)
-#             print len(currentBin), currentBin, neighbors
-#             raw_input('loop')
-            
             
 #       ; Accretable neighbors are those that aren't already binned
             if len(neighbors) > 0:
@@ -172,7 +172,6 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
                 if SN > 0.8*targetSN:
                     good[currentBin] = True
                     SNbin[currentBin]=SN
-#                 raw_input('break 2')
                 break
             
 #       ; Otherwise keep only the accretable ones
@@ -200,7 +199,6 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
                 if SN > 0.8*targetSN:
                     good[currentBin] = True
                     SNbin[currentBin]=SN
-#                 raw_input('break 3')
                 break
             
 #       ; If all the above tests are negative then accept the candidate pixel,
@@ -229,8 +227,6 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
         Binned = np.argwhere(binnumber != -1)
         
         if len(unBinned) == 0:
-#             print neighbors
-#             raw_input('break 4')
             break #; Stop if all pixels are binned
         
         totarea = totarea + areaold
@@ -244,32 +240,13 @@ def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, 
 #             minDist = dist_[k]
 #         else: #TODO: Implement KeepFixed
 #             dist_ = (x[unBinned]-keepfixed[0,i])**2 + (y[unBinned]-keepfixed[1,i])**2 #; keep the fixed centers unaltered!
-            
         
         currentBin = unBinned[k]    #; The bin is initially made of one pixel
-        SN = add_signal(signal[currentBin])/add_noise(noise[currentBin])    
-            
-
-
-#       IF ind GT nfixed THEN BEGIN
-# ;        wvt_addto_unweighted_centroid, x[newmember], y[newmember], $
-# ;          xBarnew, yBarnew, xbar, ybar, area 
-#         wvt_addto_weighted_centroid, x[newmember], y[newmember], $
-#           dens[newmember]^2, xBarnew, yBarnew, xbar, ybar, mass
-#       ENDIF ELSE BEGIN ; keep the fixed centers unaltered!
-#         xbarnew=keepfixed[0,ind-1]
-#         ybarnew=keepfixed[1,ind-1]
-#       ENDELSE
-#             xbar=xbarnew
-#             ybar=ybarnew
-#       ; Update the area of the bin
-#       area=area+1L
-
-#     ENDWHILE
+        SN = add_signal(signal[currentBin])/add_noise(noise[currentBin])
 
     binnumber[~good] = -1
     
-    return binnumber
+    return binnumber, SNbin
 
 
 def wvt_makeneighborlist(x, y, pixelSize):
@@ -351,7 +328,6 @@ def wvt_findneighbors(group, neighborlist, exneighbors, newmember, neighbors):
             exneighbors[neighbors] = 1
             
     else:
-#         print 'here', newmember, neighborlist[newmember,:]
         tmp = neighborlist[newmember,:]
         wh = np.where( tmp != -1 )[0]
         
@@ -387,19 +363,13 @@ def wvt_bin_roundness(x, y, pixelSize):
     xBar = np.sum(x)/n #; unweighted centroid here!
     yBar = np.sum(y)/n
     maxDistance = np.sqrt( np.max((x-xBar)**2 + (y-yBar)**2) )
-#     print xBar, yBar, maxDistance, equivalentRadius
     roundness = maxDistance/equivalentRadius - 1.0
     
     return roundness
 
 def wvt_addto_weighted_centroid(x, y, xymass, xBold, yBold, massold):
 #   ; For speed, this procedure computes the geometric center of a bin by adding 
-#   ; a new list of xy values for an existing bin. Useful in bin accretion step. 
-# wvt_addto_weighted_centroid, x[newmember], y[newmember], $
-#           dens[newmember]^2, xBarnew, yBarnew, xbar, ybar, mass
-    
-#     print 'wvt_addto_weighted_centroid', x, y, xymass, xBold, yBold, massold, np.sum(xymass), massold
-
+#   ; a new list of xy values for an existing bin. Useful in bin accretion step.
     xymass = np.array([xymass,], dtype = np.float)
     xymass[xymass < 1e-200] = 1e-200 # Same as IDL maximum operator 
     
@@ -413,4 +383,62 @@ def wvt_addto_weighted_centroid(x, y, xymass, xBold, yBold, massold):
         yBar = yBold
 
     return xBar, yBar, mass
+
+def wvt_reassign_bad_bins(x, y, dens, targetSN, binnumber, SNBin):
+#   ; Find pixels that the bin accretion step wasn't able to assign to a bin and
+#   ; reassign them to the next closest bin
+#   ; Implements steps (vi)-(vii) in section 5.1 of Cappellari & Copin (2003)
+
+    binnumber = wvt_renumber_binnumber(binnumber)
     
+#     I've omitted these lines of code here beacuse this checking is done on wvt_renumber_binnumber
+#     area = histogram(binnumber, REVERSE_INDICES=r, MIN=1)
+#     good = where(area gt 0, nnodes) ; Obtain the index of the good bins
+
+    nnodes = np.max(binnumber) + 1
+    
+    xNode, yNode = np.transpose([wvt_unweighted_centroid(x[index], y[index]) for index in 
+                                 [np.where(binnumber == i)[0] for i in range(nnodes)]])
+    
+#   ; Reassign pixels to the closest centroid of a good bin
+    bad = np.where(binnumber == -1)[0]
+    good = range(len(xNode))
+    
+    print 'binnumber', binnumber
+    
+    for i in range(len(bad)):
+        binnumber[bad[i]] = good[wvt_assign_to_bin(x[bad[i]],y[bad[i]],xNode, yNode, 1)]
+    
+    print binnumber[bad]
+    
+#   ; Recompute all centroids of the reassigned bins.
+#   ; These will be used as starting point for the WVT.
+    xNode, yNode = np.transpose([wvt_unweighted_centroid(x[index], y[index]) for index in 
+                                 [np.where(binnumber == i)[0] for i in range(nnodes)]])
+    
+    
+    return xNode, yNode, binnumber
+    
+def wvt_unweighted_centroid(x, y):
+#   ; Computes the geometric center of one bin
+  
+    mass=len(x)
+    xBar=np.sum(x)/mass
+    yBar=np.sum(y)/mass    
+    
+    return xBar, yBar
+    
+    
+def wvt_renumber_binnumber(binnumber, area = None):
+#   ; Kicks out zero pixel bins and renumbers the rest continuously, starting at
+#   ; the value minbinnumber
+    
+    if area is not None:
+        raise NotImplemented("Area can not be anything but None on wvt_renumber_binnumber yet!")
+
+    uniq = np.unique(binnumber[binnumber >= 0]) # Because binnumber = -1 is a null bin.
+    
+    for i in range(len(uniq)):
+        binnumber[binnumber == uniq[i]] = i
+    
+    return binnumber
