@@ -33,13 +33,157 @@ def wvt_binning(x, y, pixelSize, targetSN, signal, noise, cts=None, center=None,
     binnumber, SNBin = wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts, max_area, keepfixed, center)
     
     print 'Reassign bad bins...'
-    xNode, yNode, binnumber = wvt_reassign_bad_bins(x, y, dens, targetSN, binnumber, SNBin)
+    xNode, yNode, binnumber = wvt_reassign_bad_bins(x, y, dens, targetSN, binnumber, SNBin) 
+
+    print len(xNode), ' good bins.'
     
-    np.savetxt('reassign.out', binnumber, fmt='%i') 
+    print '(Extremely) modified Lloyd algorithm...'
+    
+#     wvt_equal_mass(x, y, dens, binnumber, xNode, yNode, iter, QUIET=quiet, $
+#     plotit=plotit, targetsn=targetsn, neighborlist=neighborlist, $
+#     max_area=max_area, gersho=gersho, keepfixed=keepfixed, weight=weight
 
+#     wvt_equal_mass(x, y, dens, binnumber, xNode, yNode, iter, None,
+#                    signal, noise, targetSN = None)
 
-    return True, True, True, True, True, True
+#     return True, True, True, True, True, True
+    
+    return binnumber
       
+
+def wvt_equal_mass(x, y, dens, binnumber, xNode, yNode, iter, neighborlist,
+                   signal, noise, targetSN = None, max_iter = None,
+                   max_area = None, keepfixed = None, weight = None):
+#   ; Iteration with the new modified Lloyd algorithm that takes advantage of the
+#   ; know average S/N per pixel to generate a WVT with equal S/N per bin. 
+#   ; Procedure described in Diehl & Statler (2005)
+
+    npixels = len(x)
+    if max_area is None: max_area = npixels
+    if max_iter is None: max_iter = 1000
+    if targetSN is None: targetSN = 5.0
+    seed = -1
+
+#   ; In case of negative data values (e.g bg subtraction), the bin properties 
+#   ; can get negative. In this case it is advisable to restrict the size of the 
+#   ; bins by max_area
+    
+    SNmin_area=targetSN/max_area
+    
+#    TODO: Implement GERSHO???
+#   ; For speed
+#   IF keyword_set(gersho) THEN dens2=dens^2
+    
+#   ; For speed: only search neighboring nodes next time you construct the WVT
+    nclosenodes = np.min([12, len(xNode)])
+    closenodes = np.zeros((npixels, nclosenodes))
+    
+    iter = 1
+    diff = 1e5
+    
+    nbins = len(xNode)
+    
+#     Skipped these lines... It is unecessary.
+#   ; No more "bad" bins with binnumber=0, i.e. start counting at 0!
+#   wvt_renumber_binnumber, binnumber, minbinnumber=0L
+
+    SNbin, binarea, binvalue = wvt_calc_bin_sn(binnumber, signal, noise)
+    
+#     rnd = randomu(seed,max(binnumber)) ; Randomize bin colors
+    
+    area = 0
+    neighborsexist = 0
+    #nfixed=size(keepfixed, /dimensions) TODO: Implement KeepFixed!
+    if keepfixed is not None:
+        raise NotImplemented("KeepFixed is not implemented yet!")
+    
+#   ; Start the iteration!
+    pixelswitch = npixels
+    navg = 20
+    ps_array = np.zeros(navg)
+    seed = -1
+    
+    psavg = -1
+    oldpsavg = 0
+    
+    while (iter >= max_iter or (psavg < oldpsavg and iter <= 10+navg and oldpsavg >= 1.1*pixelswitch) ):
+        #TODO: RANDOM!
+#     ; To improve convergence and remove limit cyles
+#     IF pixelswitch/double(npixels) LT .01 AND iter GT 20 THEN BEGIN
+#       temp=randomu(seed, n_elements(xnode))
+#       print, temp
+#       AAAAAAAAAAA = GET_KBRD(1)
+#       wh=where(temp GT .5, nwh)
+#       IF nwh NE 0 THEN xnode[wh]=(xnode[wh]+xnodeold[wh])/2.
+#       IF nwh NE 0 THEN ynode[wh]=(ynode[wh]+ynodeold[wh])/2.
+#     ENDIF
+    
+        xNodeOld = xNode.copy()
+        yNodeOld = yNode.copy()
+        
+        neighborbinnumber = wvt_assign_neighbors(neighborlist, binnumber)
+        
+        SNbin, binarea, binvalue = wvt_calc_bin_sn(binnumber, signal, noise)
+        
+        #TODO: Gersho
+#     IF NOT(keyword_set(gersho)) THEN BEGIN
+#       ; For convergence: try to avoid 1 to 1 pixel fluctuations
+#       IF pixelswitch/double(npixels) GE .01 OR iter LE 20 THEN $
+#         SNbinbar=SNbin/double(binarea) $
+#       ELSE BEGIN
+#         temp=randomu(seed, n_elements(xnode))
+#       print, temp
+#       AAAAAAAAAAA = GET_KBRD(1)
+#         wh=where(temp GT .5, nwh)
+#         IF nwh NE 0 THEN $
+#           SNbinbar[wh]=(SNbinold[wh]+SNbin[wh]/double(binarea[wh]))/2.
+#       ENDELSE
+# 
+#       SNbinold=SNbinbar
+#       SNbinbar=SNbinbar>SNmin_area
+#     ENDIF ELSE BEGIN
+#       ; If you use Gersho's conjecture, the scale lengths are all equal, 
+#       ; i.e. the WVT reduces to a VT
+#       SNbinbar=1.
+#     ENDELSE
+
+        SNbinbar = 1
+        
+        binneighbors = wvt_find_binneighbors(neighborlist, neighborbinnumber)
+        
+#   ; Stop the iteration if all pixels stop switching bins, 
+#   ; you hit the maximum number of allowed iterations, if the program is 
+#   ; terminated externally by the creating the control file "stopmenow", or
+#   ; if the convergence has flattened out
+#   ENDREP UNTIL ( file_test('stopmenow') OR $
+#                  iter GE max_iter OR $
+#                  pixelswitch EQ 0. OR $
+#                  (psavg GE oldpsavg AND iter GT 10+navg $
+#                     AND oldpsavg lt 1.1*pixelswitch) )
+
+    
+
+def wvt_calc_bin_sn(binnumber, signal, noise):
+#   ; Calculates the S/N values for all bins, as well as the bin values
+#   ; New version, should be considerably faster for large nbin
+#   ; Note: binnumber has to start at 0 and end at nbins-1!
+    
+    nbins = np.max(binnumber)+1
+#     SNbin = np.zeros(nbins)
+#     binvalue = SNbin.copy()
+#     binarea = SNbin.copy()
+    
+#     Skipped these lines... It is unecessary because it was already checked on wvt_reassign_bad_bins.
+#   IF NOT(keyword_set(area)) THEN $
+#   area = HISTOGRAM(binnumber, REVERSE_INDICES=r,min=0, max=nbins-1)
+#   w = where(area GT 0, m) ; Check for zero-size Voronoi bins
+
+    indexes = [np.where(binnumber == i)[0] for i in range(nbins)]
+    SNBin = [add_signal(signal[index]) / add_noise(noise[index]) for index in indexes]
+    binarea = [len(index) for index in indexes]
+    binvalue = [add_signal(index) for index in indexes]
+    
+    return SNBin, binarea, binvalue
 
 def wvt_bin_accretion(x, y, signal, noise, dens, targetSN, pixelSize, cts=None, max_area=None,
                       keepfixed=None, center=None):
@@ -298,8 +442,10 @@ def wvt_find_binneighbors(binneighbors, neighborlist, neighborbinnumber, binnumb
 
     if area is None:
         area = np.histogram(binnumber, nbins, range=(0, nbins-1))
-        npix = len(binnumber)
-        binneighbors = np.array([nbins+1])
+
+    npix = len(binnumber)
+    binneighbors = np.array([nbins+1])
+    
     
 def wvt_findneighbors(group, neighborlist, exneighbors, newmember, neighbors):
 #     ; Given the neighborlist for each pixel in the image, and a group of test

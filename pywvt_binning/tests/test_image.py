@@ -6,6 +6,7 @@ Created on Aug 2, 2013
 
 import pyfits
 import numpy as np
+import matplotlib.pyplot as plt
 from pywvt_binning.wvt_image import wvt_image
 
 fits_path = '../../contrib/idl/adaptive_binning/test_wvt_image/'
@@ -21,7 +22,15 @@ targetSN = 10.0
 
 max_area = 100**2
 
-wvt_image(image, noise, targetSN, center=center, max_area=max_area)
+binned_image, xNode, yNode, SNbin, binnumber, area, binValue = wvt_image(image, noise, targetSN, center=center, max_area=max_area)
+
+plt.figure(1)
+plt.clf()
+plt.imshow(binnumber)
+plt.figure(2)
+plt.clf()
+plt.imshow(image)
+
 
 # wvt_image(image,noise,targetSN,binnedimage,xnode,ynode,snbin=snbin,
 #           mask=mask, ctsimage=ctsimage, binnumber=binnumber, binvalue=binvalue, 

@@ -21,8 +21,6 @@ def wvt_image(signal, noise, targetSN, center=None, max_area=None,
 #   ; with X-ray images in mind. The structure P will hold all information 
 #   ; about the individual pixels (signal, noise, cts, ...)
     
-    binned_image = np.zeros_like(signal)
-    
     if mask is None:
         mask = np.ones_like(signal) #FIXME: Should this be dtype=np.bool as well?
     if ctsimage is None:
@@ -31,8 +29,8 @@ def wvt_image(signal, noise, targetSN, center=None, max_area=None,
     ngood = np.sum(mask == 1)
     
     y, x = np.indices(signal.shape)
-    x = x.ravel()
-    y = y.ravel()
+    x = x[mask != 0].ravel()
+    y = y[mask != 0].ravel()
     
     
 #     ; Check if the pixel should be included or not
@@ -52,8 +50,15 @@ def wvt_image(signal, noise, targetSN, center=None, max_area=None,
     
 #       ; Start the main binning algorithm
 
-    binnumber, xNode, yNode, SNbin, area, binValue = wvt_binning(x, y, pixelSize, targetSN, 
-                                                                 p_signal, p_noise, p_cts, center,
-                                                                 max_area, dens, keepfixed, gersho)
+#     binnumber, xNode, yNode, SNbin, area, binValue = wvt_binning(x, y, pixelSize, targetSN,
+    binnumber = wvt_binning(x, y, pixelSize, targetSN, 
+                            p_signal, p_noise, p_cts, center,
+                            max_area, dens, keepfixed, gersho)
+    
+    binned_image = np.zeros(signal.shape[0] * signal.shape[1], dtype=np.int64)
+    binned_image[np.ravel(mask)] = binnumber
+    binned_image.reshape(signal.shape)
+    
 
-    return binned_image, xNode, yNode, SNbin, binnumber, area, binValue    
+#     return binned_image, xNode, yNode, SNbin, binnumber, area, binValue    
+    return binned_image # binnumber
